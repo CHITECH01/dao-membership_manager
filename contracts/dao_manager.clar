@@ -35,6 +35,9 @@
 ;; Mapping to track active DAO members (true = member, false = not a member)
 (define-map MEMBERSHIP_REGISTRY principal bool)
 
+;; Mapping to store member addresses by index for enumeration
+(define-map MEMBER_INDEX_REGISTRY uint principal)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private Utility Functions ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -92,3 +95,55 @@
         (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
         ;; Use helper function to remove the member
         (remove-member member)))
+        
+;; Update the maximum allowable DAO members (admin only)
+(define-public (set-max-members (new-limit uint))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the new limit is valid
+        (asserts! (> new-limit u0) ERR_INVALID_LIMIT)
+        ;; Update the maximum member limit
+        (var-set max-member-limit new-limit)
+        (ok true)))
+
+;; Check the membership status of a user (admin only)
+(define-public (get-membership-status (user principal))
+    (begin
+        ;; Verify the user exists in the DAO
+        (asserts! (is-active-member user) ERR_NOT_MEMBER)
+        ;; Return membership status
+        (ok true)))
+
+;; Fetch the total number of active members
+(define-public (get-total-members)
+    (fetch-member-count))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Read-Only Functions       ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Check if a user is a DAO member (anyone can call)
+(define-read-only (check-is-member (user principal))
+    (ok (is-active-member user)))
+
+;; Get the DAO admin
+(define-read-only (get-dao-admin)
+    (ok CONTRACT_ADMIN))
+
+;; Get the current max member limit
+(define-read-only (get-max-members)
+    (ok (var-get max-member-limit)))
+
+;; Get member at index (read-only version)
+(define-read-only (get-member-at-index-read (index uint))
+    (map-get? MEMBER_INDEX_REGISTRY index))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Contract Initialization   ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Initialize the contract's member count
+(begin
+    (var-set current-member-count u0))
