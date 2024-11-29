@@ -82,3 +82,13 @@
         (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
         ;; Use helper function to add the member
         (add-member new-member)))
+
+;; Validate input before using in remove-dao-member
+(define-public (remove-dao-member (member principal))
+    (begin
+        ;; Ensure the provided input is valid (e.g., not null or the admin itself)
+        (asserts! (not (is-eq member tx-sender)) ERR_INVALID_USER)
+        ;; Validate the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Use helper function to remove the member
+        (remove-member member)))
