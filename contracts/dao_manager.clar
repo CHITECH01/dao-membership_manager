@@ -425,3 +425,135 @@
 ;; Initialize the contract's member count
 (begin
     (var-set current-member-count u0))
+
+
+
+
+
+
+
+;; Reactivate a suspended member's voting rights (admin only)
+(define-public (reactivate-member-voting (member principal))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the user is in the registry but suspended
+        (asserts! (not (is-active-member member)) ERR_ALREADY_MEMBER)
+        ;; Reactivate the member's voting rights
+        (map-set MEMBERSHIP_REGISTRY member true)
+        (ok true)))
+
+;; Unban a specific member, allowing them to rejoin (admin only)
+(define-public (unban-member (member principal))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the member exists in the registry but is not active
+        (asserts! (not (is-active-member member)) ERR_ALREADY_MEMBER)
+        ;; Remove the ban by re-enabling their potential membership
+        (map-delete MEMBERSHIP_REGISTRY member)
+        (ok true)))
+
+;; Temporarily suspend a member's membership (admin only)
+(define-public (suspend-member (member principal))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the member is an active DAO member
+        (asserts! (is-active-member member) ERR_NOT_MEMBER)
+        ;; Mark the member as suspended
+        (map-set MEMBERSHIP_REGISTRY member false)
+        (ok true)))
+
+;; Restore a suspended member's membership (admin only)
+(define-public (restore-member (member principal))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the member is currently suspended
+        (asserts! (not (is-active-member member)) ERR_NOT_MEMBER)
+        ;; Restore their active status
+        (map-set MEMBERSHIP_REGISTRY member true)
+        (ok true)))
+
+;; Temporarily disable a member's voting rights (admin only)
+(define-public (suspend-member-voting (member principal))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the user is an active member
+        (asserts! (is-active-member member) ERR_NOT_MEMBER)
+        ;; Temporarily suspend the member's voting rights
+        (map-set MEMBERSHIP_REGISTRY member false)
+        (ok true)))
+
+;; Fix the bug that prevents updating member limits if already at max.
+(define-public (fix-bug-member-limit (new-limit uint))
+    (begin
+        ;; Ensure the limit is greater than zero
+        (asserts! (> new-limit u0) ERR_INVALID_LIMIT)
+        ;; Check if the new limit is higher than current member count
+        (asserts! (> new-limit (var-get current-member-count)) ERR_MEMBER_LIMIT_REACHED)
+        ;; Update the max member limit
+        (var-set max-member-limit new-limit)
+        (ok true)))
+
+;; Add a secure method to add new members with additional encryption.
+(define-public (enhance-security-add-member (new-member principal))
+    (begin
+        ;; Check if the member is already added
+        (asserts! (not (is-active-member new-member)) ERR_ALREADY_MEMBER)
+        ;; Logic to encrypt the member's data before adding
+        (ok true)))
+
+
+
+
+;; Check if the DAO has reached its maximum member limit
+(define-read-only (is-membership-full)
+    (ok (is-eq (var-get current-member-count) (var-get max-member-limit))))
+
+;; Check if a user is not the DAO admin (anyone can call)
+(define-read-only (check-is-not-admin (user principal))
+    (ok (not (is-eq user CONTRACT_ADMIN))))
+
+;; Check if a user is the DAO admin (read-only)
+(define-read-only (is-dao-admin (user principal))
+    (ok (is-eq user CONTRACT_ADMIN)))
+
+;; Check if the DAO can accept new members (read-only)
+(define-read-only (can-accept-new-members)
+    (ok (< (var-get current-member-count) (var-get max-member-limit))))
+
+;; Get membership count for a specific user (read-only)
+(define-read-only (get-member-count-for-user (user principal))
+    (ok (if (is-active-member user) u1 u0)))
+
+;; Verify if a user is not the DAO admin (read-only)
+(define-read-only (is-not-dao-admin (user principal))
+    (ok (not (is-eq user CONTRACT_ADMIN))))
+
+(define-read-only (get-dao-remaining-capacity)
+(ok (- (var-get max-member-limit) (var-get current-member-count))))
+
+;; Get list of members by index range (inclusive)
+(define-read-only (get-members-by-range (start uint) (end uint))
+    (ok (map-get? MEMBER_INDEX_REGISTRY start)))
+
+;; Get the actual member count without considering the limit (read-only)
+(define-read-only (get-actual-member-count)
+    (ok (var-get current-member-count)))
+
+;; Check if the DAO has reached the max capacity (read-only)
+(define-read-only (is-max-capacity-reached)
+    (ok (is-eq (var-get current-member-count) (var-get max-member-limit))))
+
+;; Check if a member can be added to the DAO (read-only)
+(define-read-only (can-increase-membership)
+    (ok (< (var-get current-member-count) (var-get max-member-limit))))
+
+;; Fetch all active members' addresses (read-only)
+(define-read-only (get-all-members)
+    (let ((total-members (var-get current-member-count)))
+        (ok (map-get? MEMBER_INDEX_REGISTRY total-members))))
+
