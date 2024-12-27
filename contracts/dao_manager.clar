@@ -81,6 +81,15 @@
             true)
         false))
 
+;; Checks if a new member can be added based on the current member count and limit.
+(define-private (validate-new-member (new-member principal))
+    (begin
+        ;; Check if the member is already added
+        (asserts! (not (is-active-member new-member)) ERR_ALREADY_MEMBER)
+        ;; Check if the max limit is reached
+        (asserts! (< (var-get current-member-count) (var-get max-member-limit)) ERR_MEMBER_LIMIT_REACHED)
+        (ok true)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public Functions          ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -227,6 +236,88 @@
         (asserts! (< (var-get current-member-count) (var-get max-member-limit)) ERR_MEMBER_LIMIT_REACHED)
         (ok true)))
 
+;; Remove multiple members from the DAO (admin only)
+(define-public (batch-remove-members (members-to-remove (list 10 principal)))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Iterate through the list and remove each member
+        (map remove-member members-to-remove)
+        (ok true)))
+
+;; Pause adding new members (admin only)
+(define-data-var is-paused bool false)
+
+;; Toggle the pause state for membership additions
+(define-public (toggle-pause)
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Toggle the pause state
+        (var-set is-paused (not (var-get is-paused)))
+        (ok true)))
+
+;; Allow members to donate funds to the DAO
+(define-public (donate-funds (amount uint))
+    (begin
+        ;; Ensure the user is a member
+        (asserts! (is-active-member tx-sender) ERR_NOT_MEMBER)
+        ;; Ensure the donation amount is positive
+        (asserts! (> amount u0) ERR_INVALID_LIMIT)
+        ;; Log the donation
+        (ok (stx-transfer? amount tx-sender CONTRACT_ADMIN))))
+
+;; Allow members to delegate voting rights to another member
+(define-map DELEGATED_VOTES principal principal)
+
+(define-public (delegate-votes (to-member principal))
+    (begin
+        ;; Ensure both users are members
+        (asserts! (is-active-member tx-sender) ERR_NOT_MEMBER)
+        (asserts! (is-active-member to-member) ERR_NOT_MEMBER)
+        ;; Delegate votes
+        (map-set DELEGATED_VOTES tx-sender to-member)
+        (ok true)))
+
+;; Allow members to revoke voting delegation
+(define-public (revoke-delegation)
+    (begin
+        ;; Ensure the user has delegated votes
+        (asserts! (is-some (map-get? DELEGATED_VOTES tx-sender)) ERR_NOT_MEMBER)
+        ;; Remove delegation
+        (map-delete DELEGATED_VOTES tx-sender)
+        (ok true)))
+
+;;  Check if the DAO is at a minimum membership level
+(define-public (is-membership-above-minimum (minimum uint))
+    (ok (> (var-get current-member-count) minimum)))
+
+;;  Get the total remaining slots for membership (returns a positive value or zero)
+(define-public (get-total-remaining-slots)
+    (ok (- (var-get max-member-limit) (var-get current-member-count))))
+
+;; Allows the contract administrator to set a new maximum member limit for the DAO.
+(define-public (set-member-limit (new-limit uint))
+    (begin
+        ;; Ensure the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the new limit is a valid number greater than zero
+        (asserts! (> new-limit u0) ERR_INVALID_LIMIT)
+        ;; Update the max member limit
+        (var-set max-member-limit new-limit)
+        (ok true)))
+
+;; Optimize the setting of the maximum member limit for performance.
+(define-public (optimize-member-limit (new-limit uint))
+    (begin
+        ;; Verify the caller is the admin
+        (asserts! (is-eq tx-sender CONTRACT_ADMIN) ERR_NOT_ADMIN)
+        ;; Ensure the new limit is valid
+        (asserts! (> new-limit u0) ERR_INVALID_LIMIT)
+        ;; Update the maximum member limit
+        (var-set max-member-limit new-limit)
+        (ok true)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Read-Only Functions       ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -291,6 +382,42 @@
 (define-read-only (get-max-membership)
     (ok (var-get max-member-limit)))
 
+;; Get the current number of members in the DAO (read-only)
+(define-read-only (get-current-member-count)
+    (ok (var-get current-member-count)))
+
+;; Check if the DAO membership is at full capacity (read-only)
+(define-read-only (is-dao-at-capacity)
+    (ok (is-eq (var-get current-member-count) (var-get max-member-limit))))
+
+;; Get the maximum allowable number of members in the DAO (read-only)
+(define-read-only (get-max-membership-limit)
+    (ok (var-get max-member-limit)))
+
+;; Get the address of the DAO admin (read-only)
+(define-read-only (get-dao-admin-address)
+    (ok CONTRACT_ADMIN))
+
+;; Check if the DAO membership is below a certain threshold (read-only)
+(define-read-only (is-membership-below-threshold-read (threshold uint))
+    (ok (< (var-get current-member-count) threshold)))
+
+;; Get the number of remaining membership slots in the DAO (read-only)
+(define-read-only (get-remaining-membership-slots)
+    (ok (- (var-get max-member-limit) (var-get current-member-count))))
+
+;; Check if the DAO has any members (read-only)
+(define-read-only (has-any-members)
+    (ok (> (var-get current-member-count) u0)))
+
+;; Get how many members can be added before reaching the max limit
+(define-read-only (get-remaining-members-until-limit)
+    (ok (- (var-get max-member-limit) (var-get current-member-count))))
+
+;; Checks if the caller is the contract admin.
+(define-read-only (is-admin)
+    (ok (is-eq tx-sender CONTRACT_ADMIN)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Contract Initialization   ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -298,4 +425,3 @@
 ;; Initialize the contract's member count
 (begin
     (var-set current-member-count u0))
-g
